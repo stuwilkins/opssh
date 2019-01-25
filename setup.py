@@ -8,8 +8,8 @@ setup(name='opssh',
       author='Stuart B. Wilkins',
       author_email='stuart@stuwilkins.org',
       packages=['opssh'],
-      entry_points = {
+      entry_points={
         'console_scripts': ['opssh_askpass=opssh.command_line:askpass',
-                            'opssh=opssh.command_line:add_keys_to_agent'],
-        }
-     )
+                            'opssh=opssh.command_line:add_keys_to_agent',
+                            'opssh_getkey=opssh.command_line:download_key'],
+        })

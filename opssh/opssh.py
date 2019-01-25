@@ -3,6 +3,7 @@ import sys
 import json
 import subprocess
 
+
 class onepassword:
     def __init__(self, subdomain='my', verbose=True):
         self._subdomain = subdomain
@@ -16,22 +17,22 @@ class onepassword:
             # authenticate
             if self._verbose:
                 print("Starting authentication with 1password ....",
-                    file=sys.stderr)
+                      file=sys.stderr)
             self._get_token()
         else:
             if self._verbose:
                 print("Using previous 1password authentication ....",
-                    file=sys.stderr)
+                      file=sys.stderr)
 
         # Now get items so we can search
 
-        self._get_list()
+        self._get_list('items')
 
     def _run_op(self, cmd, input=None):
         """Run subprocess to talk to 1password"""
 
-        if input is not None:
-            input = bytearray(input, 'utf-8')
+        if isinstance(input, str):
+            input = bytearray(input, 'ascii')
 
         rtn = subprocess.run(cmd, shell=False, stdout=subprocess.PIPE,
                              input=input)
@@ -41,22 +42,20 @@ class onepassword:
 
         return rtn.stdout
 
-
     def _get_token(self):
         """Get a token from 1password"""
 
         cmd = ['op', 'signin', self._subdomain, '--output=raw']
         self._opkey = self._run_op(cmd).lstrip().rstrip()
 
-    def _get_list(self):
+    def _get_list(self, kind):
         """List all items in the vault"""
-        cmd = ['op', 'list', 'items']
+        cmd = ['op', 'list', kind]
         p = self._run_op(cmd, self._opkey)
 
         # Now parse JSON
 
         self._items = json.loads(p)
-        #print(json.dumps(self._items, sort_keys=True, indent=4))
 
     def get_items(self, uuids):
         """Get Item from the vault based on uuid"""
@@ -67,9 +66,26 @@ class onepassword:
             p = self._run_op(cmd, self._opkey)
             op.append(json.loads(p))
 
-        #print(json.dumps(op, sort_keys=True, indent=4))
         return op
 
+    def get_document(self, uuid):
+        """Get Item from the vault based on uuid"""
+
+        cmd = ['op', 'get', 'document', uuid]
+        p = self._run_op(cmd, self._opkey)
+
+        return p
+
+    def get_documents(self, uuids):
+        """Get a document from the vault"""
+
+        op = list()
+        for uuid in uuids:
+            cmd = ['op', 'get', 'document', uuid]
+            p = self._run_op(cmd, self._opkey)
+            op.append(p)
+
+        return op
 
     def find_items_tag(self, tag):
         """Find an item based on entry to """
@@ -77,15 +93,25 @@ class onepassword:
         objs = [obj for obj in self._items if
                 any([t == tag for t in obj['overview'].get('tags', [])])]
 
-        #print(json.dumps(objs, sort_keys=True, indent=4))
+        # print(json.dumps(objs, sort_keys=True, indent=4))
         return [obj['uuid'] for obj in objs]
 
 
 class onepasswordSSH(onepassword):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, keys_path=None, **kwargs):
         super().__init__(*args, **kwargs)
+
         self._keys = None
-        self._keys_path = os.path.join(os.environ['HOME'], ".ssh/")
+
+        if keys_path is None:
+            self._keys_path = os.path.join(os.environ['HOME'], ".ssh")
+        else:
+            self._keys_path = keys_path
+
+        print("Using SSH path \"{}\" ....".format(self._keys_path),
+              file=sys.stderr)
+
+        self._private_keys = None
 
     def get_keys(self):
         """Get the SSH keys from the vault"""
@@ -103,17 +129,26 @@ class onepasswordSSH(onepassword):
                 raise RuntimeError("More than one fields in key.")
             fields = fields[0]
 
+            name = None
+            passphrase = None
             for field in fields:
-                if (field['t'] == 'KeyName') and (field['k'] == 'string'):
+                if (field['t'] == 'KeyName') and \
+                   (field['k'] == 'string'):
                     name = field['v']
-                if (field['t'] == 'Passphrase') and (field['k'] == 'string'):
+                if (field['t'] == 'Passphrase') and \
+                   (field['k'] == 'concealed'):
                     passphrase = field['v']
 
-            if self._verbose:
-                print("Found SSH key \"{}\" ....".format(name),
-                      file=sys.stderr)
+            if (name is not None) and (passphrase is not None):
 
-            keys[name] = {'passphrase': passphrase}
+                if self._verbose:
+                    print("Found SSH key uuid=\"{}\" name=\"{}\" ....".format(
+                        item['uuid'], name),
+                        file=sys.stderr)
+
+                keys[name] = {'passphrase': passphrase}
+            else:
+                print("Error parsing key information ....", file=sys.stderr)
 
         self._keys = keys
 
@@ -136,7 +171,7 @@ class onepasswordSSH(onepassword):
 
         if self._verbose:
             print("Adding key \"{}\" to ssh-agent .... ".format(key),
-                    file=sys.stderr, end='')
+                  file=sys.stderr, end='')
         rtn = subprocess.run(cmd, shell=False, env=env,
                              stdin=subprocess.PIPE,
                              stdout=subprocess.PIPE,
@@ -149,7 +184,6 @@ class onepasswordSSH(onepassword):
             else:
                 print("Done.", file=sys.stderr)
 
-
     def add_keys_to_agent(self):
         """Add keys to ssh agent"""
         if self._keys is None:
@@ -158,3 +192,64 @@ class onepasswordSSH(onepassword):
         for name, vals in self._keys.items():
             self._ssh_add(name, vals['passphrase'])
 
+    def _get_private_keys(self):
+        """Get the ssh private key files"""
+        uuids = self.find_items_tag('SSH_KEY_FILE')
+        if not len(uuids):
+            raise RuntimeError("Unable to find SSH keys in database")
+
+        items = self.get_items(uuids)
+        keys = dict()
+        for item in items:
+            # print(json.dumps(item, sort_keys=True, indent=4))
+            fields = [sect['fields']
+                      for sect in item['details']['sections']
+                      if 'fields' in sect]
+            name = None
+            for field in fields:
+                if len(field) != 1:
+                    raise RuntimeError("Error parsing fields, expected "
+                                       "only one")
+                field = field[0]
+                if (field['t'] == 'KeyName') and (field['k'] == 'string'):
+                    name = field['v']
+
+            keys[name] = {'uuid': item['uuid'],
+                          'filename': item['details']
+                                          ['documentAttributes']
+                                          ['fileName']}
+
+        self._private_keys = keys
+
+    def get_private_key(self, key_id):
+        if self._private_keys is None:
+            self._get_private_keys()
+
+        if key_id not in self._private_keys:
+            raise RuntimeError("Unable to find key \"{}\" in vault".format(
+                key_id))
+
+        return self.get_document(self._private_keys[key_id]['uuid'])
+
+    def save_private_key(self, key_id, overwrite=False):
+        """Save thr private key to a file"""
+
+        key = self.get_private_key(key_id)
+        filename = self._private_keys[key_id]['filename']
+        filename = os.path.join(self._keys_path, filename)
+
+        if os.path.isfile(filename) and not overwrite:
+            print("File \"{}\" exists, not overwriting ....".format(filename),
+                  file=sys.stderr)
+            return False
+
+        if overwrite:
+            print("Overwriting ", file=sys.stderr, end='')
+        else:
+            print("Writing ", file=sys.stderr, end='')
+
+        print("\"{}\" as private key \"{}\" ....".format(filename, key_id),
+              file=sys.stderr)
+
+        with open(filename, 'wb') as file:
+            file.write(key)
