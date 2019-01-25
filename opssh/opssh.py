@@ -140,7 +140,6 @@ class onepasswordSSH(onepassword):
                     passphrase = field['v']
 
             if (name is not None) and (passphrase is not None):
-
                 if self._verbose:
                     print("Found SSH key uuid=\"{}\" name=\"{}\" ....".format(
                         item['uuid'], name),
@@ -148,7 +147,8 @@ class onepasswordSSH(onepassword):
 
                 keys[name] = {'passphrase': passphrase}
             else:
-                print("Error parsing key information ....", file=sys.stderr)
+                print("Error parsing key information (uuid=\"{}\") ...."
+                      .format(item['uuid']), file=sys.stderr)
 
         self._keys = keys
 
@@ -180,17 +180,29 @@ class onepasswordSSH(onepassword):
             if rtn.returncode:
                 print("FAILED.", file=sys.stderr)
                 print("ERR = ", file=sys.stderr, end='')
-                print(rtn.stderr, file=sys.stderr)
+                print(rtn.stderr.decode('ascii'), file=sys.stderr)
             else:
                 print("Done.", file=sys.stderr)
 
-    def add_keys_to_agent(self):
+    def agent_delete_keys(self):
+        """Call ssh-add and delete stored keys"""
+        cmd = ['ssh-add', '-D']
+        print("Calling ssh-add to delete current keys ....",
+              file=sys.stderr)
+        rtn = subprocess.check_output(cmd, shell=False)
+
+
+    def add_keys_to_agent(self, keys=None, delete=False):
         """Add keys to ssh agent"""
         if self._keys is None:
             self.get_keys()
 
+        if delete:
+            self.agent_delete_keys()
+
         for name, vals in self._keys.items():
-            self._ssh_add(name, vals['passphrase'])
+            if name in keys:
+                self._ssh_add(name, vals['passphrase'])
 
     def _get_private_keys(self):
         """Get the ssh private key files"""
@@ -251,5 +263,6 @@ class onepasswordSSH(onepassword):
         print("\"{}\" as private key \"{}\" ....".format(filename, key_id),
               file=sys.stderr)
 
-        with open(filename, 'wb') as file:
+        with open(os.open(filename, os.O_CREAT | os.O_WRONLY, 0o600),
+                  'wb') as file:
             file.write(key)

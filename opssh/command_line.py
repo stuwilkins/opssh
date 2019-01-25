@@ -21,8 +21,30 @@ def askpass():
 
 
 def add_keys_to_agent():
+
+    usage="usage: %prog [options] [[keyname] ..]"
+
+    parser = OptionParser(usage=usage)
+    parser.add_option("-a", "--all",
+                      action="store_true", dest="all", default=False,
+                      help="Add all keys to SSH agent")
+    parser.add_option("-D", "--delete",
+                      action="store_true", dest="delete", default=False,
+                      help="Detete keys from agent before starting")
+
+    (options, args) = parser.parse_args(sys.argv)
+
+    if (len(args) < 2) and not options.all:
+        print(parser.print_help(), file=sys.stderr)
+        return 127
+
+    names = args[1:]
+
     op = opssh.onepasswordSSH(subdomain='my')
-    op.add_keys_to_agent()
+    if options.all:
+        op.add_keys_to_agent(delete=options.delete)
+    else:
+        op.add_keys_to_agent(keys=names, delete=options.delete)
 
 
 def download_key():
