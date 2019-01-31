@@ -52,7 +52,7 @@ class onepassword:
         """List all items in the vault"""
         cmd = ['op', 'list', kind]
         p = self._run_op(cmd, self._opkey)
-        if not isinstance(p, str)
+        if not isinstance(p, str):
             p = p.decode("ascii")
 
         # Now parse JSON
