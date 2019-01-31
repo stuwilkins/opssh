@@ -2,6 +2,7 @@ import os
 import sys
 import json
 import subprocess
+import inspect
 
 
 class onepassword:
@@ -35,7 +36,8 @@ class onepassword:
             input = bytearray(input, 'utf-8')
 
         rtn = subprocess.run(cmd, shell=False, stdout=subprocess.PIPE,
-                             input=input)
+                            stderr=subprocess.PIPE, input=input, timeout=60)
+            
         if rtn.returncode != 0:
             raise RuntimeError(
                 "1password cli failed (err={})".format(rtn.returncode))
@@ -112,8 +114,9 @@ class onepasswordSSH(onepassword):
         else:
             self._keys_path = keys_path
 
-        print("Using SSH path \"{}\" ....".format(self._keys_path),
-              file=sys.stderr)
+        if(self._verbose):
+            print("Using SSH path \"{}\" ....".format(self._keys_path),
+                  file=sys.stderr)
 
         self._private_keys = None
 
@@ -126,6 +129,15 @@ class onepasswordSSH(onepassword):
         items = self.get_items(uuids)
         keys = dict()
         for item in items:
+            # Check if we have the correct fields
+            if 'details' not in item:
+                print("Unable to parse key metadata ....", file=sys.stderr)
+                continue
+
+            if 'sections' not in item['details']:
+                print("Unable to parse key metadata ....", file=sys.stderr)
+                continue
+
             fields = [sect['fields']
                       for sect in item['details']['sections']
                       if 'fields' in sect]
@@ -172,6 +184,20 @@ class onepasswordSSH(onepassword):
         env['OP_SESSION_{}'.format(self._subdomain)] = self._opkey
         env['OP_SESSION_SUBDOMAIN'] = self._subdomain
         env['SSH_KEY_ID'] = key
+
+        #print(os.path.dirname(inspect.stack()[-1].filename), file=sys.stderr)
+        #env['PATH'] = os.path.dirname(inspect.stack()[-1].filename)
+        #env['PATH'] = '/usr/bin' + os.pathsep + env['PATH']
+        #print(env['PATH'], file=sys.stderr)
+
+        #if 'PATH' in env:
+        #    path = env['PATH'].split(os.pathsep)
+        #    for d in path:
+        #        print(d, file=sys.stderr)
+        #        for root, dirs, files in os.walk(d):
+        #            print(root, dirs, files, file=sys.stderr) 
+        #else:
+        #    print("Unable to get path from environment ....", file=sys.stderr)
 
         if self._verbose:
             print("Adding key \"{}\" to ssh-agent .... ".format(key),
@@ -220,7 +246,15 @@ class onepasswordSSH(onepassword):
         items = self.get_items(uuids)
         keys = dict()
         for item in items:
-            # print(json.dumps(item, sort_keys=True, indent=4))
+            print(json.dumps(item, sort_keys=True, indent=4))
+            if 'details' not in item:
+                print("Unable to parse key metadata ....", file=sys.stderr)
+                continue
+
+            if 'sections' not in item['details']:
+                print("Unable to parse key metadata ....", file=sys.stderr)
+                continue
+
             fields = [sect['fields']
                       for sect in item['details']['sections']
                       if 'fields' in sect]

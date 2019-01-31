@@ -16,8 +16,9 @@ def askpass():
     if sd is None:
         raise RuntimeError("Environmental Variable for SubDomain Not Set")
 
-    op = opssh.onepasswordSSH(subdomain=sd, verbose=False)
+    op = opssh.onepasswordSSH(subdomain=sd, verbose=True)
     print(op.get_passphrase(key), file=sys.stdout)
+    return 0
 
 
 def add_keys_to_agent():
