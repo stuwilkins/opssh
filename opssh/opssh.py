@@ -32,7 +32,7 @@ class onepassword:
         """Run subprocess to talk to 1password"""
 
         if isinstance(input, str):
-            input = bytearray(input, 'ascii')
+            input = bytearray(input, 'utf-8')
 
         rtn = subprocess.run(cmd, shell=False, stdout=subprocess.PIPE,
                              input=input)
@@ -53,7 +53,7 @@ class onepassword:
         cmd = ['op', 'list', kind]
         p = self._run_op(cmd, self._opkey)
         if not isinstance(p, str):
-            p = p.decode("ascii")
+            p = p.decode("utf-8")
 
         # Now parse JSON
 
