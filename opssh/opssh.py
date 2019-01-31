@@ -164,7 +164,7 @@ class onepasswordSSH(onepassword):
         return self._keys[keyid]['passphrase']
 
     def _ssh_add(self, key, passphrase):
-        cmd = ['ssh-add', '-q',
+        cmd = ['ssh-add', 
                os.path.join(self._keys_path, key)]
         env = os.environ.copy()
         env['SSH_ASKPASS'] = 'opssh_askpass'
