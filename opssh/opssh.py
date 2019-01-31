@@ -66,6 +66,8 @@ class onepassword:
         for uuid in uuids:
             cmd = ['op', 'get', 'item', uuid]
             p = self._run_op(cmd, self._opkey)
+            if not isinstance(p, str):
+                p = p.decode("utf-8")
             op.append(json.loads(p))
 
         return op
