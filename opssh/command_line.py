@@ -48,17 +48,20 @@ def add_keys_to_agent():
 
 
 def download_key():
-    parser = OptionParser()
+    usage="usage: %prog [options] [[keyname] ..]"
+
+    parser = OptionParser(usage=usage)
     parser.add_option("-o", "--overwrite",
                       action="store_true", dest="overwrite", default=False,
                       help="Overwrite file if exists")
+    parser.add_option("-a", "--all",
+                      action="store_true", dest="all", default=False,
+                      help="Add all keys")
 
     (options, args) = parser.parse_args(sys.argv)
 
-    if len(args) < 2:
-        p, c = os.path.split(sys.argv[0])
-        print("usage: {} <keyname>".format(c, file=sys.stderr))
-        print("", file=sys.stderr)
+    if (len(args) < 2) and not options.all:
+        print(parser.print_help(), file=sys.stderr)
         return 127
 
     names = args[1:]

@@ -201,8 +201,11 @@ class onepasswordSSH(onepassword):
             self.agent_delete_keys()
 
         for name, vals in self._keys.items():
-            if name in keys:
+            if keys is None:
                 self._ssh_add(name, vals['passphrase'])
+            else:
+                if name in keys:
+                    self._ssh_add(name, vals['passphrase'])
 
     def _get_private_keys(self):
         """Get the ssh private key files"""
