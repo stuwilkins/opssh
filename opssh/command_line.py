@@ -1,7 +1,13 @@
 import os
 import sys
-from optparse import OptionParser
+from argparse import ArgumentParser
 import opssh.opssh as opssh
+
+
+def _add_default_parser(parser):
+    parser.add_argument("-d", "--domain", metavar='domain',
+                        default='my',
+                        help="1password domain to use")
 
 
 def askpass():
@@ -22,50 +28,52 @@ def askpass():
 
 def add_keys_to_agent():
 
-    usage="usage: %prog [options] [[keyname] ..]"
+    parser = ArgumentParser(description='Add SSH keys stored in the 1password '
+                                        'vault to ssh-agent')
+    _add_default_parser(parser)
 
-    parser = OptionParser(usage=usage)
-    parser.add_option("-a", "--all",
-                      action="store_true", dest="all", default=False,
-                      help="Add all keys to SSH agent")
-    parser.add_option("-D", "--delete",
-                      action="store_true", dest="delete", default=False,
-                      help="Detete keys from agent before starting")
+    parser.add_argument("-D", "--delete",
+                        action="store_true", dest="delete", default=False,
+                        help="Detete keys from agent before starting")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("-a", "--all",
+                       action="store_true", dest="all",
+                       help="Add all keys to SSH agent")
+    group.add_argument('keys', metavar='keyname', nargs="*",
+                       default=list(),
+                       help="Keyname to add to agent")
 
-    (options, args) = parser.parse_args(sys.argv)
+    args = parser.parse_args()
 
-    if (len(args) < 2) and not options.all:
-        print(parser.print_help(), file=sys.stderr)
-        return 127
-
-    names = args[1:]
-
-    op = opssh.onepasswordSSH(subdomain='my')
-    if options.all:
-        op.add_keys_to_agent(delete=options.delete)
+    op = opssh.onepasswordSSH(subdomain=args.domain)
+    if args.all:
+        op.add_keys_to_agent(delete=args.delete)
     else:
-        op.add_keys_to_agent(keys=names, delete=options.delete)
+        op.add_keys_to_agent(keys=args.keys,
+                             delete=args.delete)
 
 
 def download_key():
-    usage="usage: %prog [options] [[keyname] ..]"
+    parser = ArgumentParser(description='Add ssh key to system')
+    _add_default_parser(parser)
 
-    parser = OptionParser(usage=usage)
     parser.add_option("-o", "--overwrite",
-                      action="store_true", dest="overwrite", default=False,
+                      action="store_true", dest="overwrite",
                       help="Overwrite file if exists")
-    parser.add_option("-a", "--all",
-                      action="store_true", dest="all", default=False,
-                      help="Add all keys")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("-a", "--all",
+                       action="store_true", dest="all",
+                       help="Download and install  all keys.")
+    group.add_argument('keys', metavar='keyname', nargs="*",
+                       default=list(),
+                       help="Keyname to add to agent")
 
-    (options, args) = parser.parse_args(sys.argv)
+    args = parser.parse_args()
 
-    if (len(args) < 2) and not options.all:
-        print(parser.print_help(), file=sys.stderr)
-        return 127
+    op = opssh.onepasswordSSH(subdomain=args.domain)
 
-    names = args[1:]
-
-    op = opssh.onepasswordSSH(subdomain='my')
-    for name in names:
-        op.save_private_key(name, overwrite=options.overwrite)
+    if args.all:
+        op.save_private_key(overwrite=options.overwrite)
+    else:
+        for name in args.keys:
+            op.save_private_key(name, overwrite=options.overwrite)
