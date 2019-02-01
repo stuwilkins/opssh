@@ -7,7 +7,8 @@ import subprocess
 class onepassword:
     def __init__(self, subdomain='my', verbose=True):
         self._subdomain = subdomain
-        self._opkey = os.environ.get('OP_SESSION_{}'.format(self._subdomain))
+        key = os.environ.get('OP_SESSION_{}'.format(self._subdomain))
+        self._opkey = key
         self._items = None
         self._verbose = verbose
 
@@ -28,17 +29,30 @@ class onepassword:
 
         self._get_list('items')
 
-    def _run_op(self, cmd, input=None):
+    def _run_op(self, cmd, add_key=True):
         """Run subprocess to talk to 1password"""
 
-        if isinstance(input, str):
-            input = bytearray(input, 'ascii')
+        if add_key:
+            if self._opkey is not None:
+                if isinstance(self._opkey, str):
+                    key = bytearray(self._opkey, 'utf-8')
+                else:
+                    key = self._opkey
+            else:
+                key = None
+        else:
+            key = None
 
-        rtn = subprocess.run(cmd, shell=False, stdout=subprocess.PIPE,
-                             input=input)
-        if rtn.returncode != 0:
-            raise RuntimeError(
-                "1password cli failed (err={})".format(rtn.returncode))
+        rtncode = 127
+        while(rtncode != 0):
+            rtn = subprocess.run(cmd, shell=False,
+                                 stdout=subprocess.PIPE,
+                                 input=key)
+            rtncode = rtn.returncode
+            if rtncode != 0:
+                print("1password cli failed (err={}) ...."
+                      .format(rtn.returncode), file=sys.stderr)
+                self._get_token()
 
         return rtn.stdout
 
@@ -47,11 +61,12 @@ class onepassword:
 
         cmd = ['op', 'signin', self._subdomain, '--output=raw']
         self._opkey = self._run_op(cmd).lstrip().rstrip()
+        os.putenv("OP_SESSION_" + self._subdomain, self._opkey)
 
     def _get_list(self, kind):
         """List all items in the vault"""
         cmd = ['op', 'list', kind]
-        p = self._run_op(cmd, self._opkey)
+        p = self._run_op(cmd)
 
         # Now parse JSON
 
@@ -63,7 +78,7 @@ class onepassword:
         op = list()
         for uuid in uuids:
             cmd = ['op', 'get', 'item', uuid]
-            p = self._run_op(cmd, self._opkey)
+            p = self._run_op(cmd)
             op.append(json.loads(p))
 
         return op
@@ -72,7 +87,7 @@ class onepassword:
         """Get Item from the vault based on uuid"""
 
         cmd = ['op', 'get', 'document', uuid]
-        p = self._run_op(cmd, self._opkey)
+        p = self._run_op(cmd)
 
         return p
 
@@ -82,7 +97,7 @@ class onepassword:
         op = list()
         for uuid in uuids:
             cmd = ['op', 'get', 'document', uuid]
-            p = self._run_op(cmd, self._opkey)
+            p = self._run_op(cmd)
             op.append(p)
 
         return op
@@ -180,7 +195,7 @@ class onepasswordSSH(onepassword):
             if rtn.returncode:
                 print("FAILED.", file=sys.stderr)
                 print("ERR = ", file=sys.stderr, end='')
-                print(rtn.stderr.decode('ascii'), file=sys.stderr)
+                print(rtn.stderr.decode('utf-8'), file=sys.stderr)
             else:
                 print("Done.", file=sys.stderr)
 
@@ -191,6 +206,10 @@ class onepasswordSSH(onepassword):
               file=sys.stderr)
         rtn = subprocess.check_output(cmd, shell=False)
 
+        if rtn.returncode == 0:
+            return True
+
+        return False
 
     def add_keys_to_agent(self, keys=None, delete=False):
         """Add keys to ssh agent"""
