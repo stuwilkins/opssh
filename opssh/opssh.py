@@ -5,12 +5,12 @@ import subprocess
 
 
 class onepassword:
-    def __init__(self, subdomain='my', verbose=True):
+    def __init__(self, subdomain='my', verbose=True, timeout=None):
         self._subdomain = subdomain
-        key = os.environ.get('OP_SESSION_{}'.format(self._subdomain))
-        self._opkey = key
+        self._opkey = os.environ.get('OP_SESSION_{}'.format(self._subdomain))
         self._items = None
         self._verbose = verbose
+        self._timeout = None
 
         # If we haven't authenticated at the shell, authenticate
 
@@ -46,6 +46,7 @@ class onepassword:
         rtncode = 127
         while(rtncode != 0):
             rtn = subprocess.run(cmd, shell=False,
+                                 timeout=self._timeout,
                                  stdout=subprocess.PIPE,
                                  input=key)
             rtncode = rtn.returncode
@@ -82,14 +83,6 @@ class onepassword:
             op.append(json.loads(p))
 
         return op
-
-    def get_document(self, uuid):
-        """Get Item from the vault based on uuid"""
-
-        cmd = ['op', 'get', 'document', uuid]
-        p = self._run_op(cmd)
-
-        return p
 
     def get_documents(self, uuids):
         """Get a document from the vault"""
@@ -188,6 +181,7 @@ class onepasswordSSH(onepassword):
             print("Adding key \"{}\" to ssh-agent .... ".format(key),
                   file=sys.stderr, end='')
         rtn = subprocess.run(cmd, shell=False, env=env,
+                             timeout=self._timeout,
                              stdin=subprocess.PIPE,
                              stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE)
@@ -202,9 +196,19 @@ class onepasswordSSH(onepassword):
     def agent_delete_keys(self):
         """Call ssh-add and delete stored keys"""
         cmd = ['ssh-add', '-D']
-        print("Calling ssh-add to delete current keys ....",
+        print("Calling ssh-add to delete current keys ....", end='',
               file=sys.stderr)
-        rtn = subprocess.check_output(cmd, shell=False)
+        rtn = subprocess.run(cmd, shell=False, timeout=self._timeout,
+                             stdin=subprocess.PIPE,
+                             stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE)
+        if self._verbose:
+            if rtn.returncode:
+                print("FAILED.", file=sys.stderr)
+                print("ERR = ", file=sys.stderr, end='')
+                print(rtn.stderr.decode('utf-8'), file=sys.stderr)
+            else:
+                print("Done.", file=sys.stderr)
 
         if rtn.returncode == 0:
             return True
@@ -263,7 +267,7 @@ class onepasswordSSH(onepassword):
             raise RuntimeError("Unable to find key \"{}\" in vault".format(
                 key_id))
 
-        return self.get_document(self._private_keys[key_id]['uuid'])
+        return self.get_documents([self._private_keys[key_id]['uuid']])
 
     def save_private_key(self, key_id, overwrite=False):
         """Save thr private key to a file"""
