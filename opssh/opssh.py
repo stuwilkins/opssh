@@ -5,22 +5,27 @@ import subprocess
 
 
 class onepassword:
-    def __init__(self, subdomain='my', verbose=True, timeout=None):
+    def __init__(self, subdomain='my', verbose=False, quiet=False,
+                 timeout=60, login_tries=5, encoding='utf-8'):
         self._subdomain = subdomain
-        self._opkey = os.environ.get('OP_SESSION_{}'.format(self._subdomain))
+        self._encoding = encoding
         self._items = None
-        self._verbose = verbose
-        self._timeout = None
+        self._timeout = timeout
+        self._login_tries = login_tries
+
+        self._opkey = os.environ.get('OP_SESSION_{}'.format(self._subdomain))
+        if self._opkey is not None:
+            self._opkey = bytearray(self._opkey, self._encoding)
+
+        self._verbose = 1
+        if verbose:
+            self._verbose = 2
+        if quiet:
+            self._verbose = 0
 
         # If we haven't authenticated at the shell, authenticate
 
-        if self._opkey is None:
-            # authenticate
-            if self._verbose:
-                print("Starting authentication with 1password ....",
-                      file=sys.stderr)
-            self._get_token()
-        else:
+        if self._opkey is not None:
             if self._verbose:
                 print("Using previous 1password authentication ....",
                       file=sys.stderr)
@@ -29,30 +34,26 @@ class onepassword:
 
         self._get_list('items')
 
-    def _run_op(self, cmd, add_key=True):
+    def _run_op(self, cmd):
         """Run subprocess to talk to 1password"""
-
-        if add_key:
-            if self._opkey is not None:
-                if isinstance(self._opkey, str):
-                    key = bytearray(self._opkey, 'utf-8')
-                else:
-                    key = self._opkey
-            else:
-                key = None
-        else:
-            key = None
 
         rtncode = 127
         while(rtncode != 0):
             rtn = subprocess.run(cmd, shell=False,
                                  timeout=self._timeout,
                                  stdout=subprocess.PIPE,
-                                 input=key)
+                                 stderr=subprocess.PIPE,
+                                 input=self._opkey)
+            if (self._verbose == 2) and (rtn.stderr != b''):
+                print(rtn.stderr.decode(self._encoding), end='',
+                      file=sys.stderr)
             rtncode = rtn.returncode
             if rtncode != 0:
-                print("1password cli failed (err={}) ...."
-                      .format(rtn.returncode), file=sys.stderr)
+                if self._verbose == 2:
+                    print("1password cli failed (err={}) ...."
+                        .format(rtn.returncode), file=sys.stderr)
+                print("Authenticating with 1password ....",
+                      file=sys.stderr)
                 self._get_token()
 
         return rtn.stdout
@@ -61,8 +62,31 @@ class onepassword:
         """Get a token from 1password"""
 
         cmd = ['op', 'signin', self._subdomain, '--output=raw']
-        self._opkey = self._run_op(cmd).lstrip().rstrip()
-        os.putenv("OP_SESSION_" + self._subdomain, self._opkey)
+
+        # copy the env and remove the key
+        env = os.environ.copy()
+        env.pop('OP_SESSION_{}'.format(self._subdomain), None)
+
+        # Now attempt login
+        tries = self._login_tries
+        while tries:
+            rtn = subprocess.run(cmd, shell=False,
+                                 timeout=self._timeout,
+                                 stdout=subprocess.PIPE)
+            if rtn.returncode == 0:
+                # We have a login
+                key = rtn.stdout
+                if isinstance(key, bytearray):
+                    key = key.decode(self._encoding)
+                self._opkey = rtn.stdout.lstrip().rstrip()
+                self._opkey = bytearray(self._opkey, self._encoding)
+                return
+
+            tries -= 1
+
+        # We should not get here
+        raise RuntimeError("Unable to login to 1password after {} tries"
+                           .format(self._login_tries))
 
     def _get_list(self, kind):
         """List all items in the vault"""
@@ -116,8 +140,9 @@ class onepasswordSSH(onepassword):
         else:
             self._keys_path = keys_path
 
-        print("Using SSH path \"{}\" ....".format(self._keys_path),
-              file=sys.stderr)
+        if self._verbose:
+            print("Using SSH path \"{}\" ....".format(self._keys_path),
+                file=sys.stderr)
 
         self._private_keys = None
 
@@ -148,7 +173,7 @@ class onepasswordSSH(onepassword):
                     passphrase = field['v']
 
             if (name is not None) and (passphrase is not None):
-                if self._verbose:
+                if self._verbose == 2:
                     print("Found SSH key uuid=\"{}\" name=\"{}\" ....".format(
                         item['uuid'], name),
                         file=sys.stderr)
@@ -173,8 +198,10 @@ class onepasswordSSH(onepassword):
         env = os.environ.copy()
         env['SSH_ASKPASS'] = 'opssh_askpass'
         env['DISPLAY'] = 'foo'
-        env['OP_SESSION_{}'.format(self._subdomain)] = self._opkey
+        env['OP_SESSION_{}'.format(self._subdomain)] = \
+            self._opkey.decode(self._encoding)
         env['OP_SESSION_SUBDOMAIN'] = self._subdomain
+        env['OP_SESSION_TIMEOUT'] = str(self._timeout)
         env['SSH_KEY_ID'] = key
 
         if self._verbose:
@@ -189,14 +216,14 @@ class onepasswordSSH(onepassword):
             if rtn.returncode:
                 print("FAILED.", file=sys.stderr)
                 print("ERR = ", file=sys.stderr, end='')
-                print(rtn.stderr.decode('utf-8'), file=sys.stderr)
+                print(rtn.stderr.decode(self._encoding), file=sys.stderr)
             else:
                 print("Done.", file=sys.stderr)
 
     def agent_delete_keys(self):
         """Call ssh-add and delete stored keys"""
         cmd = ['ssh-add', '-D']
-        print("Calling ssh-add to delete current keys ....", end='',
+        print("Calling ssh-add to delete current keys .... ", end='',
               file=sys.stderr)
         rtn = subprocess.run(cmd, shell=False, timeout=self._timeout,
                              stdin=subprocess.PIPE,
@@ -206,7 +233,7 @@ class onepasswordSSH(onepassword):
             if rtn.returncode:
                 print("FAILED.", file=sys.stderr)
                 print("ERR = ", file=sys.stderr, end='')
-                print(rtn.stderr.decode('utf-8'), file=sys.stderr)
+                print(rtn.stderr.decode(self._encoding), file=sys.stderr)
             else:
                 print("Done.", file=sys.stderr)
 

@@ -8,6 +8,15 @@ def _add_default_parser(parser):
     parser.add_argument("-d", "--domain", metavar='domain',
                         default='my',
                         help="1password domain to use")
+    parser.add_argument("-t", "--timeout", metavar='timeout',
+                        default=60,
+                        help="Timeout for 1password cli client")
+    parser.add_argument("-s", "--ssh-keys", metavar='path',
+                        default=None, dest='keys_path',
+                        help="Path to ssh keys")
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("-v", "--verbose", action="store_true")
+    group.add_argument("-q", "--quiet", action="store_true")
 
 
 def askpass():
@@ -15,6 +24,7 @@ def askpass():
 
     key = os.environ.get('SSH_KEY_ID', None)
     sd = os.environ.get('OP_SESSION_SUBDOMAIN', None)
+    timeout = int(os.environ.get('OP_SESSION_TIMEOUT', '10'))
 
     if key is None:
         raise RuntimeError("Environmental Variable for Key Not Set")
@@ -22,7 +32,7 @@ def askpass():
     if sd is None:
         raise RuntimeError("Environmental Variable for SubDomain Not Set")
 
-    op = opssh.onepasswordSSH(subdomain=sd, verbose=False)
+    op = opssh.onepasswordSSH(subdomain=sd, verbose=False, timeout=timeout)
     print(op.get_passphrase(key), file=sys.stdout)
 
 
@@ -45,12 +55,13 @@ def add_keys_to_agent():
 
     args = parser.parse_args()
 
-    op = opssh.onepasswordSSH(subdomain=args.domain)
+    op = opssh.onepasswordSSH(subdomain=args.domain, timeout=args.timeout,
+                              verbose=args.verbose, quiet=args.quiet,
+                              keys_path=args.keys_path)
     if args.all:
         op.add_keys_to_agent(delete=args.delete)
     else:
-        op.add_keys_to_agent(keys=args.keys,
-                             delete=args.delete)
+        op.add_keys_to_agent(keys=args.keys, delete=args.delete)
 
 
 def download_key():
@@ -70,7 +81,9 @@ def download_key():
 
     args = parser.parse_args()
 
-    op = opssh.onepasswordSSH(subdomain=args.domain)
+    op = opssh.onepasswordSSH(subdomain=args.domain, timeout=args.timeout,
+                              verbose=args.verbose, quiet=args.quiet,
+                              keys_path=args.keys_path)
 
     if args.all:
         op.save_private_key(overwrite=options.overwrite)
