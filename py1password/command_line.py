@@ -1,7 +1,7 @@
 import os
 import sys
 from argparse import ArgumentParser
-import opssh.opssh as opssh
+import py1password.opssh as opssh
 
 
 def _add_default_parser(parser):
