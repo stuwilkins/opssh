@@ -83,7 +83,6 @@ class onepassword:
                 if isinstance(key, bytearray):
                     key = key.decode(self._encoding)
                 self._opkey = rtn.stdout.lstrip().rstrip()
-                #self._opkey = bytearray(self._opkey, self._encoding)
                 return
 
             tries -= 1
@@ -131,5 +130,3 @@ class onepassword:
 
         # print(json.dumps(objs, sort_keys=True, indent=4))
         return [obj['uuid'] for obj in objs]
-
-
