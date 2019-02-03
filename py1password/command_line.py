@@ -22,18 +22,18 @@ def _add_default_parser(parser):
 def askpass():
     """This routine is run as SSH_ASKPASS to get a passphrase"""
 
-    key = os.environ.get('SSH_KEY_ID', None)
+    uuid = os.environ.get('SSH_KEY_UUID', None)
     sd = os.environ.get('OP_SESSION_SUBDOMAIN', None)
     timeout = int(os.environ.get('OP_SESSION_TIMEOUT', '10'))
 
-    if key is None:
+    if uuid is None:
         raise RuntimeError("Environmental Variable for Key Not Set")
 
     if sd is None:
         raise RuntimeError("Environmental Variable for SubDomain Not Set")
 
     op = opssh.onepasswordSSH(subdomain=sd, verbose=False, timeout=timeout)
-    print(op.get_passphrase(key), file=sys.stdout)
+    print(op.get_passphrase(uuid), file=sys.stdout)
 
 
 def add_keys_to_agent():

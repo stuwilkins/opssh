@@ -1,14 +1,12 @@
 import os
 import sys
-import json
 import subprocess
 from .op import onepassword
+
 
 class onepasswordSSH(onepassword):
     def __init__(self, *args, keys_path=None, **kwargs):
         super().__init__(*args, **kwargs)
-
-        self._keys = None
 
         if keys_path is None:
             self._keys_path = os.path.join(os.environ['HOME'], ".ssh")
@@ -21,18 +19,32 @@ class onepasswordSSH(onepassword):
 
         self._private_keys = None
 
-    def get_keys(self):
+    def get_keys_info(self):
         """Get the SSH keys from the vault"""
         uuids = self.find_items_tag('SSH_KEY')
         if not len(uuids):
             raise RuntimeError("Unable to find SSH keys in database")
 
-        items = self.get_items(uuids)
         keys = dict()
+        for uuid in uuids:
+            name, info = self._get_key_info(uuid)
+            keys[name] = info
+
+        return keys
+
+    def get_passphrase(self, uuid):
+        """Get the pasphrase of a SSH key given UUID"""
+        name, info = self._get_key_info(uuid)
+        return info['passphrase']
+
+    def _get_key_info(self, uuids):
+        items = self.get_items([uuids])
+
         for item in items:
             fields = [sect['fields']
                       for sect in item['details']['sections']
                       if 'fields' in sect]
+
             if len(fields) != 1:
                 raise RuntimeError("More than one fields in key.")
             fields = fields[0]
@@ -49,27 +61,21 @@ class onepasswordSSH(onepassword):
 
             if (name is not None) and (passphrase is not None):
                 if self._verbose == 2:
-                    print("Found SSH key uuid=\"{}\" name=\"{}\" ....".format(
-                        item['uuid'], name),
-                        file=sys.stderr)
+                    self._print("Found SSH key uuid=\"{}\" name=\"{}\" ...."
+                                .format(item['uuid'], name))
+                    print("OK", file=sys.stderr)
 
-                keys[name] = {'passphrase': passphrase}
+                keys = {'passphrase': passphrase, 'uuid': item['uuid']}
             else:
                 print("Error parsing key information (uuid=\"{}\") ...."
                       .format(item['uuid']), file=sys.stderr)
 
-        self._keys = keys
+        return name, keys
 
-    def get_passphrase(self, keyid):
-        """Return the passphrase of a key"""
-        if self._keys is None:
-            self.get_keys()
-
-        return self._keys[keyid]['passphrase']
-
-    def _ssh_add(self, key, passphrase):
+    def _ssh_add(self, uuid, key):
         cmd = ['ssh-add', '-q',
                os.path.join(self._keys_path, key)]
+
         env = os.environ.copy()
         env['SSH_ASKPASS'] = 'op-askpass'
         env['DISPLAY'] = 'foo'
@@ -77,10 +83,11 @@ class onepasswordSSH(onepassword):
             self._opkey.decode(self._encoding)
         env['OP_SESSION_SUBDOMAIN'] = self._subdomain
         env['OP_SESSION_TIMEOUT'] = str(self._timeout)
-        env['SSH_KEY_ID'] = key
+        env['SSH_KEY_UUID'] = uuid
 
         if self._verbose:
             self._print("Adding key \"{}\" to ssh-agent".format(key))
+
         rtn = subprocess.run(cmd, shell=False, env=env,
                              timeout=self._timeout,
                              stdin=subprocess.PIPE,
@@ -119,18 +126,18 @@ class onepasswordSSH(onepassword):
 
     def add_keys_to_agent(self, keys=None, delete=False):
         """Add keys to ssh agent"""
-        if self._keys is None:
-            self.get_keys()
+        keys = self.get_keys_info()
 
         if delete:
             self.agent_delete_keys()
 
-        for name, vals in self._keys.items():
-            if keys is None:
-                self._ssh_add(name, vals['passphrase'])
-            else:
+        if keys is None:
+            for name, vals in keys.items():
+                self._ssh_add(vals['uuid'], name)
+        else:
+            for name, vals in keys.items():
                 if name in keys:
-                    self._ssh_add(name, vals['passphrase'])
+                    self._ssh_add(vals['uuid'], name)
 
     def _get_private_keys(self):
         """Get the ssh private key files"""

@@ -34,7 +34,7 @@ class onepassword:
 
         self._get_list('items')
 
-    def _print(self, txt, col=65):
+    def _print(self, txt, col=70):
         print('{message:.<{width}}'.format(message=txt + ' ', width=col),
               end=' ', file=sys.stderr)
 
