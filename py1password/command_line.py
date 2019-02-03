@@ -32,7 +32,7 @@ def askpass():
     if sd is None:
         raise RuntimeError("Environmental Variable for SubDomain Not Set")
 
-    op = opssh.onepasswordSSH(subdomain=sd, verbose=False, timeout=timeout)
+    op = opssh.onepasswordSSH(subdomain=sd, verbose=0, timeout=timeout)
     print(op.get_passphrase(uuid), file=sys.stdout)
 
 
@@ -68,9 +68,9 @@ def download_key():
     parser = ArgumentParser(description='Add ssh key to system')
     _add_default_parser(parser)
 
-    parser.add_option("-o", "--overwrite",
-                      action="store_true", dest="overwrite",
-                      help="Overwrite file if exists")
+    parser.add_argument("-o", "--overwrite",
+                        action="store_true", dest="overwrite",
+                        help="Overwrite file if exists")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("-a", "--all",
                        action="store_true", dest="all",
@@ -86,7 +86,6 @@ def download_key():
                               keys_path=args.keys_path)
 
     if args.all:
-        op.save_private_key(overwrite=options.overwrite)
+        op.save_ssh_keys(overwrite=args.overwrite)
     else:
-        for name in args.keys:
-            op.save_private_key(name, overwrite=options.overwrite)
+        op.save_ssh_keys(args.keys, overwrite=args.overwrite)

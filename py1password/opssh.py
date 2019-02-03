@@ -17,8 +17,6 @@ class onepasswordSSH(onepassword):
             print("Using SSH path \"{}\" ....".format(self._keys_path),
                   file=sys.stderr)
 
-        self._private_keys = None
-
     def get_keys_info(self):
         """Get the SSH keys from the vault"""
         uuids = self.find_items_tag('SSH_KEY')
@@ -61,21 +59,19 @@ class onepasswordSSH(onepassword):
 
             if (name is not None) and (passphrase is not None):
                 if self._verbose == 2:
-                    self._print("Found SSH key uuid=\"{}\" name=\"{}\" ...."
+                    self._print("SSH key uuid=\"{}\" name=\"{}\""
                                 .format(item['uuid'], name))
-                    print("OK", file=sys.stderr)
+                    print("FOUND", file=sys.stderr)
 
                 keys = {'passphrase': passphrase, 'uuid': item['uuid']}
             else:
-                print("Error parsing key information (uuid=\"{}\") ...."
-                      .format(item['uuid']), file=sys.stderr)
+                if self._verbose == 2:
+                    print("ERROR", file=sys.stderr)
 
         return name, keys
 
-    def _ssh_add(self, uuid, key):
-        cmd = ['ssh-add', '-q',
-               os.path.join(self._keys_path, key)]
-
+    def _ssh_askpass(self, cmd, uuid):
+        """Run a command with the askpass setup for vault"""
         env = os.environ.copy()
         env['SSH_ASKPASS'] = 'op-askpass'
         env['DISPLAY'] = 'foo'
@@ -85,14 +81,22 @@ class onepasswordSSH(onepassword):
         env['OP_SESSION_TIMEOUT'] = str(self._timeout)
         env['SSH_KEY_UUID'] = uuid
 
-        if self._verbose:
-            self._print("Adding key \"{}\" to ssh-agent".format(key))
-
         rtn = subprocess.run(cmd, shell=False, env=env,
                              timeout=self._timeout,
                              stdin=subprocess.PIPE,
                              stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE)
+        return rtn
+
+    def _ssh_add(self, uuid, key):
+        if self._verbose:
+            self._print("Adding key \"{}\" to ssh-agent".format(key))
+
+        cmd = ['ssh-add', '-q',
+               os.path.join(self._keys_path, key)]
+
+        rtn = self._ssh_askpass(cmd, uuid)
+
         if self._verbose:
             if rtn.returncode:
                 print("FAILED.", file=sys.stderr)
@@ -139,7 +143,7 @@ class onepasswordSSH(onepassword):
                 if name in keys:
                     self._ssh_add(vals['uuid'], name)
 
-    def _get_private_keys(self):
+    def get_private_keys(self):
         """Get the ssh private key files"""
         uuids = self.find_items_tag('SSH_KEY_FILE')
         if not len(uuids):
@@ -148,10 +152,14 @@ class onepasswordSSH(onepassword):
         items = self.get_items(uuids)
         keys = dict()
         for item in items:
-            # print(json.dumps(item, sort_keys=True, indent=4))
+            if 'details' not in item:
+                continue
+            if 'sections' not in item['details']:
+                continue
             fields = [sect['fields']
                       for sect in item['details']['sections']
                       if 'fields' in sect]
+
             name = None
             for field in fields:
                 if len(field) != 1:
@@ -166,38 +174,83 @@ class onepasswordSSH(onepassword):
                                           ['documentAttributes']
                                           ['fileName']}
 
-        self._private_keys = keys
+        return keys
+        # return self.get_documents([keys[key_id]['uuid']])
 
-    def get_private_key(self, key_id):
-        if self._private_keys is None:
-            self._get_private_keys()
+    def save_ssh_keys(self, key_names=None, overwrite=False):
+        """Save the private key to a file"""
+        private_keys = self.get_private_keys()
+        public_keys = self.get_keys_info()
 
-        if key_id not in self._private_keys:
-            raise RuntimeError("Unable to find key \"{}\" in vault".format(
-                key_id))
+        # If none get all keys found
+        if key_names is None:
+            key_names = private_keys.keys()
 
-        return self.get_documents([self._private_keys[key_id]['uuid']])
+        for key_id in key_names:
+            _public_key = True
 
-    def save_private_key(self, key_id, overwrite=False):
-        """Save thr private key to a file"""
+            if key_id not in private_keys:
+                raise RuntimeError("Unable to find private key \"{}\" in vault"
+                                   .format(key_id))
+            if key_id not in public_keys:
+                _public_key = False
+                if self._verbose == 2:
+                    print("Unable to find public key passphrase \"{}\" "
+                          "in vault".format(key_id), file=sys.stderr)
 
-        key = self.get_private_key(key_id)
-        filename = self._private_keys[key_id]['filename']
-        filename = os.path.join(self._keys_path, filename)
+            # if self._verbose == 2:
+            #     print("Private key UUID = {}"
+            #           .format(private_keys[key_id]['uuid']), file=sys.stderr)
+            #     if _public_key:
+            #         print("Public  key UUID = {}"
+            #               .format(public_keys[key_id]['uuid']),
+            #               file=sys.stderr)
 
-        if os.path.isfile(filename) and not overwrite:
-            print("File \"{}\" exists, not overwriting ....".format(filename),
-                  file=sys.stderr)
-            return False
+            private_filename = private_keys[key_id]['filename']
+            private_filename = os.path.join(self._keys_path, private_filename)
 
-        if overwrite:
-            print("Overwriting ", file=sys.stderr, end='')
-        else:
-            print("Writing ", file=sys.stderr, end='')
+            if os.path.isfile(private_filename) and not overwrite:
+                if self._verbose:
+                    self._print("File \"{}\" exists"
+                                .format(os.path.basename(private_filename)))
+                    print("FAILED", file=sys.stderr)
+            else:
+                _data = self.get_documents([private_keys[key_id]['uuid']])[0]
 
-        print("\"{}\" as private key \"{}\" ....".format(filename, key_id),
-              file=sys.stderr)
+                if self._verbose:
+                    self._print("Writing private key \"{}\""
+                                .format(os.path.basename(private_filename)))
 
-        with open(os.open(filename, os.O_CREAT | os.O_WRONLY, 0o600),
-                  'wb') as file:
-            file.write(key)
+                with open(os.open(private_filename,
+                                  os.O_CREAT | os.O_WRONLY,
+                                  0o600), 'wb') as file:
+                    file.write(_data)
+                if self._verbose:
+                    print("DONE", file=sys.stderr)
+
+            # Now do public key
+            if _public_key:
+                public_filename = private_filename + '.pub'
+                if os.path.isfile(public_filename) and not overwrite:
+                    if self._verbose:
+                        self._print("File \"{}\" exists"
+                                    .format(os.path.basename(public_filename)))
+                    print("FAILED", file=sys.stderr)
+                else:
+                    cmd = ['ssh-keygen', '-y', '-f', private_filename]
+                    rtn = self._ssh_askpass(cmd, public_keys[key_id]['uuid'])
+                    if rtn.returncode == 0:
+                        if self._verbose:
+                            self._print("Writing public  key \"{}\""
+                                        .format(
+                                            os.path.basename(public_filename)))
+
+                        with open(os.open(public_filename,
+                                          os.O_CREAT | os.O_WRONLY,
+                                          0o644), 'wb') as file:
+                            file.write(rtn.stdout)
+                        if self._verbose:
+                            print("DONE", file=sys.stderr)
+                    else:
+                        print("Unable to generate public key for private key "
+                              "\"{}\" ....".format(key_id), file=sys.stderr)
