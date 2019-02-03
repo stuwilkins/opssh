@@ -10,7 +10,7 @@ setup(name='py1password',
       packages=['py1password'],
       entry_points={
         'console_scripts':
-          ['op-askpass=py1password.command_line:askpass',
-           'op-unlock=py1password.command_line:add_keys_to_agent',
-           'op-getkey=py1password.command_line:download_key'],
+        ['op-askpass=py1password.command_line:askpass',
+         'op-unlock=py1password.command_line:add_keys_to_agent',
+         'op-getkey=py1password.command_line:download_key'],
         })
