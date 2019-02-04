@@ -99,8 +99,9 @@ class onepasswordSSH(onepassword):
         if self._verbose:
             if rtn.returncode:
                 print("FAILED.", file=sys.stderr)
-                print("ERR = ", file=sys.stderr, end='')
-                print(rtn.stderr.decode(self._encoding), file=sys.stderr)
+                if self._verbose == 2:
+                    print("ERR = ", file=sys.stderr, end='')
+                    print(rtn.stderr.decode(self._encoding), file=sys.stderr)
             else:
                 print("Done.", file=sys.stderr)
 
@@ -129,16 +130,16 @@ class onepasswordSSH(onepassword):
 
     def add_keys_to_agent(self, keys=None, delete=False):
         """Add keys to ssh agent"""
-        keys = self.get_keys_info()
+        _keys = self.get_keys_info()
 
         if delete:
             self.agent_delete_keys()
 
         if keys is None:
-            for name, vals in keys.items():
+            for name, vals in _keys.items():
                 self._ssh_add(vals['uuid'], name)
         else:
-            for name, vals in keys.items():
+            for name, vals in _keys.items():
                 if name in keys:
                     self._ssh_add(vals['uuid'], name)
 
@@ -225,7 +226,7 @@ class onepasswordSSH(onepassword):
                                   0o600), 'wb') as file:
                     file.write(_data)
                 if self._verbose:
-                    print("DONE", file=sys.stderr)
+                    print("Done.", file=sys.stderr)
 
             # Now do public key
             if _public_key:
@@ -249,7 +250,7 @@ class onepasswordSSH(onepassword):
                                           0o644), 'wb') as file:
                             file.write(rtn.stdout)
                         if self._verbose:
-                            print("DONE", file=sys.stderr)
+                            print("Done.", file=sys.stderr)
                     else:
                         print("Unable to generate public key for private key "
                               "\"{}\" ....".format(key_id), file=sys.stderr)

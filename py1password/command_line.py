@@ -54,6 +54,7 @@ def add_keys_to_agent():
                        help="Keyname to add to agent")
 
     args = parser.parse_args()
+    print(args)
 
     op = opssh.onepasswordSSH(subdomain=args.domain, timeout=args.timeout,
                               verbose=args.verbose, quiet=args.quiet,
@@ -88,4 +89,4 @@ def download_key():
     if args.all:
         op.save_ssh_keys(overwrite=args.overwrite)
     else:
-        op.save_ssh_keys(args.keys, overwrite=args.overwrite)
+        op.save_ssh_keys(key_names=args.keys, overwrite=args.overwrite)
