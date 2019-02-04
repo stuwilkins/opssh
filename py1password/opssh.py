@@ -92,8 +92,7 @@ class onepasswordSSH(onepassword):
         if self._verbose:
             self._print("Adding key \"{}\" to ssh-agent".format(key))
 
-        cmd = ['ssh-add', 
-               os.path.join(self._keys_path, key)]
+        cmd = ['ssh-add', os.path.join(self._keys_path, key)]
 
         rtn = self._ssh_askpass(cmd, uuid)
 
