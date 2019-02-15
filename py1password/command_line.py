@@ -54,7 +54,6 @@ def add_keys_to_agent():
                        help="Keyname to add to agent")
 
     args = parser.parse_args()
-    print(args)
 
     op = opssh.onepasswordSSH(subdomain=args.domain, timeout=args.timeout,
                               verbose=args.verbose, quiet=args.quiet,
