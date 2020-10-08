@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 
 from setuptools import setup
+import versioneer
 
 setup(name='py1password',
-      version='0.1',
+      version=versioneer.get_version(),
+      cmdclass=versioneer.get_cmdclass(),
       description='Python library for interfacing with 1password cli',
       author='Stuart B. Wilkins',
       author_email='stuart@stuwilkins.org',
